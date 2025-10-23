@@ -1,0 +1,63 @@
+1) cat /flag
+
+2) more /flag
+
+3) less /flag
+
+4) tail /flag
+
+5) head /flag
+
+6) sort /flag
+
+7) vim /flag
+
+8) emacs /flag
+
+9) nano /flag
+
+10) rev /flag | rev
+
+11) od -a -A n -w9999 /flag | tr -d " " 
+
+12) hd -f /flag (it's good enough, it outputs the flag)
+
+13) xxd /flag | xxd -r
+
+14) base32 /flag | base32 -d
+
+15) base64 /flag | base64 -d
+
+16) split -n 1/1 /flag
+
+17) gzip -c /flag | gunzip -c
+
+18) bzip2 -c /flag | bunzip2 -c
+
+19) zip -r - /flag | funzip
+
+20) tar -cf - /flag | tar -xOf -
+
+21) ar r flag /flag && cat flag
+
+22) find /flag | cpio -o
+
+23) genisoimage -sort /flag
+
+24) env cat /flag
+
+25) find /flag -exec cat {} ';'
+
+26) make -s --eval=$'x:\n\t-'"cat /flag"
+
+27) nice cat /flag
+
+28) timeout 1 cat /flag
+
+29) stdbuf -i0 cat /flag
+
+30) setarch x86_64 cat /flag
+
+31) watch -n 1 -x cat /flag
+
+32) socat -U - /flag
