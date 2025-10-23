@@ -1,0 +1,321 @@
+01 Your First HTTP Request) Run /challenge/server, go to http://challenge.localhost:80 for the flag
+
+02 Reading Flask) Notice the following in /challenge/server:
+
+@app.route("/submit", methods=["GET"])
+def challenge():
+    if "Firefox" not in flask.request.headers.get("User-Agent"):
+        flask.abort(400, "You are using an incorrect client to access this resource!") 
+Run /challenge/server, using Firefox, go to http://challenge.localhost:80/submit for the flag.
+
+03 Commented Data) Notice the following in /challenge/server:
+
+@app.route("/attempt", methods=["GET"])
+def challenge():
+    if "Firefox" not in flask.request.headers.get("User-Agent"):
+        flask.abort(400, "You are using an incorrect client to access this resource!")
+
+    return f"""
+        <html>
+          <head><title>Talking Web</title></head>
+        <body>
+          <h1>Great job!</h1>
+          <!-- TOP SECRET: <p>{open("/flag").read().strip()}</p> -->
+        </body>
+        </html>
+    """
+The flag will be hidden in an HTML comment so we have to look up the page's source to see it.
+Run /challenge/server, go to http://challenge.localhost:80/attempt, view page source, get the flag.
+
+04 HTTP Metadata) Notice the following:
+
+@app.route("/progress", methods=["GET"])
+def challenge():
+    if "Firefox" not in flask.request.headers.get("User-Agent"):
+        flask.abort(400, "You are using an incorrect client to access this resource!")
+
+    response = flask.make_response(
+        "<html><head><title>Talking Web</title></head><body><h1>Great job!</h1></body></html>"
+    )
+    response.headers["X-Flag"] = open("/flag").read().strip()
+    return response
+
+The challenge executable will send us the flag in a header so we will have to check the headers.
+Run /challenge/server, turn on Web Developer Tools on Firefox, go to http://challenge.localhost:80/progress, go to the Network tab, find the connection titled 'progress', in the Headers section you will find the flag under a custom X-Flag header.
+
+05 HTTP (netcat))
+
+/challenge/server &
+nc challenge.localhost 80
+GET / HTTP1.0
+
+06 HTTP Paths (netcat))
+
+Notice the following in /challenge/server:
+@app.route("/gateway", methods=["GET"])
+def challenge(): ...
+
+We have to make a request to get /gateway.
+
+/challenge/server &
+nc challenge.localhost 80
+GET /gateway HTTP/1.0
+
+07 HTTP (curl))
+
+In /challenge/server:
+@app.route("/attempt", methods=["GET"])
+def challenge():
+    if name_of_program_for(peer_process_of(flask.request.input_stream.fileno())) not in ["curl"]:
+        flask.abort(400, "You are using an incorrect client to access this resource!")
+
+We have to make a simple GET request to challenge.localhost:80/attempt using CURL.
+
+/challenge/server &
+curl challenge.localhost:80/attempt
+
+08 HTTP (python))
+
+In /challenge/server:
+@app.route("/entry", methods=["GET"])
+def challenge():
+    if name_of_program_for(peer_process_of(flask.request.input_stream.fileno())) not in ["python3"]:
+        flask.abort(400, "You are using an incorrect client to access this resource!")
+
+We have to make a GET request to challenge.localhost:80/entry using Python.
+
+/challenge/server &; python3 -c 'import requests; r = requests.get("http://challenge.localhost:80/entry"); print(r.text); exit()'
+
+09 HTTP Host Header (python))
+
+In /challenge/server:
+@app.route("/request", methods=["GET"])
+and
+app.config["SERVER_NAME"] = "xss.pwnfunction.com:80"
+means we have to make a GET request to challenge.localhost:80/request using xss.pwnfunction.com:80 as the HOST header.
+
+/challenge/server & 
+python3 -c 'import requests; headers = { "Host": "xss.pwnfunction.com:80" }; r = requests.get("http://challenge.localhost:80/request", headers=headers); print(r.text); exit()'
+
+10 HTTP Host Header (curl))
+
+In /challenge/server:
+@app.route("/entry", methods=["GET"])
+app.config["SERVER_NAME"] = "sadservers.com:80"
+
+We'll make a GET request to /entry using "sadservers.com:80" as the Host header.
+
+/challenge/server &
+curl --header 'Host: sadservers.com:80' http://challenge.localhost/entry
+
+11 HTTP Host Header (netcat))
+
+In /challenge/server:
+@app.route("/fulfill", methods=["GET"])
+app.config["SERVER_NAME"] = "0xf.at:80"
+
+nc challenge.localhost 80
+GET /fulfill HTTP/1.0
+HOST: 0xf.at:80
+
+12 URL Encoding (netcat))
+
+In /challenge/server:
+@app.route("/mission progress fulfill", methods=["GET"])
+
+
+nc challenge.localhost 80
+GET /mission%20progress%20fulfill HTTP/1.1
+HOST: challenge.localhost:80
+
+13 HTTP GET Parameters)
+
+In /challenge/server:
+
+@app.route("/mission", methods=["GET"])
+def challenge():
+    if flask.request.args.get("password", None) != "sqhneyqy":
+        flask.abort(403, "Incorrect value for get parameter password!")
+
+    return f
+
+This means that we have to send a GET request to /mission with a password parameter set to "sqhneyqy".
+
+nc challenge.localhost 80
+GET http://challenge.localhost/mission?password=sqhneyqy HTTP/1.1
+
+14 Multiple HTTP Parameters (netcat))
+
+nc challenge.localhost 80
+GET http://challenge.localhost/submit?access_code=cjfcfyuk&credential=wyasxzvk&challenge_key=otxljdik HTTP/1.1
+
+
+15 Multiple HTTP Parameters (curl))
+
+curl "challenge.localhost/evaluate?verify=kxqhhioe&auth_pass=azymkygt&secret=bqgqpqox"
+
+16 HTTP Forms)
+
+Open in Firefox, type in the value you can find by reading /challenge/server, submit.
+
+17 HTTP Forms (curl))
+
+curl -d "hash=trqqjgiv" http://challenge.localhost/gate
+
+18 HTTP Forms (netcat))
+
+nc challenge.localhost 80
+POST /entry HTTP/1.1
+Host: challenge.localhost
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 20
+
+unlock_code=eijcoumi
+
+19 HTTP Forms (python))
+
+python3 -c 'import requests; payload = {"flag": "dobhyonh"}; r = requests.post("http://challenge.localhost:80/complete", data=payload); print(r.text); exit()'
+
+20 HTTP Forms Without Forms
+
+Opened challenge site through Firefox, added this to the page using Inspect Source:
+
+<form method="POST" action="http://challenge.localhost/qualify">
+      <input type="hidden" name="auth_pass" value="ihbulisp">
+      <input type="submit" value="Submit">
+</form>
+
+Clicked submit and I got the flag.
+
+21 Multiple Form Fields (curl))
+
+curl -d "solution=ntqsifqa&auth_pass=jeajofjf&password=oflxdvtb" http://challenge.localhost/hack
+
+22 Multiple Form Fields (netcat))
+
+nc challenge.localhost 80
+POST /pwn HTTP/1.1
+Host: challenge.localhost
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 76
+
+secret_key=vyajvbop&challenge_key=cdmmpexq&hash=xnezbbbc&credential=qmrjdtgq
+
+23 HTTP Redirects (netcat))
+
+GET / HTTP/1.1
+Host: challenge.localhost
+
+and then:
+
+GET [redirected-link] HTTP/1.1
+Host: challenge.localhost
+
+24 HTTP Redirects (curl))
+
+curl -L challenge.localhost
+
+25 HTTP Redirects (python))
+
+python3 -c 'import requests; r = requests.get("http://challenge.localhost"); print(r.text); exit()'
+
+26 HTTP Cookies (curl))
+
+Send any GET request to 127.0.0.1:80, it will reply with "Set-Cookie: cookie=[something]".
+
+curl -b "cookie=[something]" 127.0.0.1:80
+
+27 HTTP Cookies (netcat))
+
+Make a get request first to get a response with the Set-Cookie header. Then:
+
+nc 127.0.0.1 80
+GET / HTTP/1.1
+Cookie: cookie=[something]
+
+28 HTTP Cookies (python))
+
+python3 -c 'import requests; s = requests.Session(); r = s.get("http://challenge.localhost"); print(r.text); exit()'
+
+29 Server State (python))
+
+python3 -c 'import requests; s = requests.Session(); r = s.get("http://challenge.localhost"); print(r.text); exit()'
+
+30 Listening Web)
+
+Create a file listening_web.py with the following:
+
+from flask import Flask
+
+app = Flask(__name__)
+
+@app.route('/')
+def hello():
+    return 'Hello world!'
+
+if __name__ == '__main__':
+    app.run(debug=True, port=1337)
+
+Run it using 'python3 listening_web.py', and run /challenge/server in a different terminal, and check the logs for the flag.
+
+31 Speaking Redirects)
+
+Create a file redirect.py with the following:
+
+from flask import Flask,redirect
+
+app = Flask(__name__)
+
+@app.route('/')
+def hello():
+    return redirect("127.0.0.1:80/gateway", code=302)
+
+if __name__ == '__main__':
+    app.run(debug=True, port=1337)
+
+Run it using 'python3 redirect.py', and run /challenge/server and /challenge/client in different terminals, and check the logs for the flag.
+
+32 JavaScript Redirects)
+
+Create a file at /home/hacker/public_html/solve.html, put this inside:
+
+<script>
+window.location.replace("http://challenge.localhost:80/pass")
+</script>
+
+Run /challenge/server, and /challenge/client.
+
+33 Including JavaScript)
+
+Same as above, change the script to this:
+
+<script src="http://challenge.localhost/solve"></script>
+<script>
+window.location.replace("http://challenge.localhost/solve?flag="+flag)
+</script>
+
+34 HTTP (javascript))
+
+<script>
+let a = fetch("http://challenge.localhost/complete").then((response) => response.text()).then((flag) => fetch("http://challenge.localhost/"+flag))
+</script>
+
+35 HTTP Get Parameters (javascript))
+
+<script>
+let a = fetch("http://challenge.localhost/pwn?signature=gqznscqv&verify=xeqtqtsp&credential=ufuzjbmr").then((response) => response.text()).then((flag) => fetch("http://challenge.localhost/"+flag))
+</script>
+
+36 HTTP Forms (javascript))
+
+<script>
+let a = fetch("http://challenge.localhost/hack", {
+				method: "POST",
+				body: new URLSearchParams({
+					pin: "pzzodcbb",
+					code: "ohrcrevd",
+					challenge_key: "redeczgy"
+				})
+			})
+.then((response) => response.text()).then((flag) => fetch("http://challenge.localhost/"+flag))
+</script>
