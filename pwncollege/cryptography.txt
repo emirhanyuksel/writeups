@@ -1,0 +1,1532 @@
+Symmetric Cryptography
+
+1) XOR
+
+"We'll give you a shared key, XOR a secret number with it, and expect you to recover the number."
+
+Challenge code:
+
+key = random.randrange(1, 256)
+plain_secret = random.randrange(0, 256)
+cipher_secret = plain_secret ^ key
+
+print(f"The key: {key}")
+print(f"Encrypted secret: {cipher_secret}")
+if int(input("Decrypted secret? ")) == plain_secret:
+    print("CORRECT! Your flag:")
+    print(open("/flag").read())
+
+We can get plain_secret by doing key ^ cipher_secret.
+
+2) XORing Hex
+
+This time, we have to do it with hexadecimal numbers.
+
+for n in range(10):
+    print(f"Challenge number {n}...")
+
+    key = random.randrange(1, 256)
+    plain_secret = random.randrange(0, 256)
+    cipher_secret = plain_secret ^ key
+
+    print(f"The key: {key:#04x}")
+    print(f"Encrypted secret: {cipher_secret:#04x}")
+    answer = int(input("Decrypted secret? "), 16)
+    print(f"You entered: {answer:#04x}, decimal {answer}.")
+    if answer != plain_secret:
+        print("INCORRECT!")
+        sys.exit(1)
+
+    print("Correct! Moving on.")
+
+print("CORRECT! Your flag:")
+print(open("/flag").read())
+
+doing hex(key ^ cipher_secret) in Python will give us what we need, we do this ten times and input the hexadecimal value without the 0x and get the flag.
+
+3) Xoring ASCII
+
+Now we do the same with ASCII
+
+Here's the challenge code:
+for n in range(1, 10):
+    print(f"Challenge number {n}...")
+    pt_chr, ct_chr = random.sample(
+        string.digits + string.ascii_letters + string.punctuation,
+        2
+    )
+    key = ord(pt_chr) ^ ord(ct_chr)
+
+    print(f"- Encrypted Character: {ct_chr}")
+    print(f"- XOR Key: {key:#04x}")
+    answer = input("- Decrypted Character? ").strip()
+    if answer != pt_chr:
+        print("Incorrect!")
+        sys.exit(1)
+
+    print("Correct! Moving on.")
+
+print("You have mastered XORing ASCII! Your flag:")
+
+
+This time I figured that I could write a function instead of doing these by hand, so:
+>>> def chal(a, b):
+...     a = int(a.encode('ascii').hex(), 16)
+...     b = a ^b
+...     c = chr(b)
+...     return c
+...
+>>> chal('n', 0x42)
+','
+
+We do this ten times and get the flag.
+
+4) XORing ASCII Strings
+
+Now we do the same for strings. You can do this with the method shown in the challenge text:
+
+from Crypto.Util.strxor import strxor
+strxor(b"AAA", b"BBB")
+
+5) One-time Pad
+
+"This challenge encrypts the flag with a one-time pad and then gives you the key. Luckily, a one-time pad is a symmetric cryptosystem: that is, you use the same key to encrypt and to decrypt, so you have everything you need to decrypt the flag!"
+
+key_hex = "your_key"
+cipher_hex = "your_cipher"
+key_bytes = bytes.fromhex(key_hex)
+cipher_bytes = bytes.fromhex(cipher_hex)
+strxor(key_bytes, cipher_bytes)
+
+6) One-time Pad Tampering
+
+"So, the One Time Pad is proven to be secure... but only in the Confidential sense! It actually does not guarantee anything about Integrity. This challenge asks you: what if you could tamper with the message in transit? Think about how XOR works, and see if you can get the flag!"
+
+This is the challenge code:
+
+#!/usr/bin/exec-suid -- /usr/bin/python3 -I
+
+from Crypto.Util.strxor import strxor
+
+import time
+import sys
+
+key = open("/challenge/.key", "rb").read()
+
+while line := sys.stdin.readline():
+    if not line.startswith("TASK: "):
+        continue
+    data = bytes.fromhex(line.split()[1])
+    cipher_len = min(len(data), len(key))
+    plaintext = strxor(data[:cipher_len], key[:cipher_len])
+
+    print(f"Hex of plaintext: {plaintext.hex()}")
+    print(f"Received command: {plaintext}")
+    if plaintext == b"sleep":
+        print("Sleeping!")
+        time.sleep(1)
+    elif plaintext == b"flag!":
+        print("Victory! Your flag:")
+        print(open("/flag").read())
+    else:
+        print("Unknown command!")
+
+The way I solved it is that I sent an input like "aaaaaaaaaa", it turned it into \aa\aa\aa\aa\aa, XOR'ed it with the key and gave us the result. We can XOR our input and what it gives us to get the key, then we xor b"flag!" with our key and send the result to the program.
+
+hacker@cryptography~one-time-pad-tampering:~$ /challenge/worker
+TASK: aaaaaaaaaa
+Hex of plaintext: XXXXXXXXXX
+
+>>> a = "aaaaaaaaaa"
+>>> b = "XXXXXXXXXX"
+>>> a_bytes = bytes.fromhex(a)
+>>> b_bytes = bytes.fromhex(b)
+>>> from Crypto.Util.strxor import strxor
+>>> c = strxor(a_bytes,b_bytes)
+>>> c
+b'something'
+>>> target = b"flag!"
+>>> send = strxor(target, c)
+>>> send
+b'something else'
+>>> payload_hex = send.hex()
+>>> payload_hex
+'our payload'
+>>> exit()
+hacker@cryptography~one-time-pad-tampering:~$ /challenge/worker
+TASK: our payload
+Hex of plaintext: some stuff
+Received command: b'flag!'
+Victory! Your flag:
+pwn.college{FLAG}
+
+7) Many-time Pad
+
+Similar logic as above.
+The challenge gives you: flag ^ key = ciphertext in the beginning.
+If you give it the ciphertext as input, it does: ciphertext ^ key = flag, and you get the hex representation of the flag.
+
+8) AES
+
+It gives us the key and ciphertext so we can decrypt and move on.
+
+from Crypto.Cipher import AES
+key = bytes.fromhex("AES Key (hex)")
+cipher = bytes.fromhex("Flag Ciphertext (hex)")
+cipher = AES.new(key=key, mode=AES.MODE_ECB)
+print(cipher.decrypt(ciphertext))
+
+9) AES-ECB-CPA
+
+This is the challenge code:
+#!/usr/bin/exec-suid -- /usr/bin/python3 -I
+
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad
+from Crypto.Random import get_random_bytes
+
+flag = open("/flag", "rb").read()
+
+key = get_random_bytes(16)
+cipher = AES.new(key=key, mode=AES.MODE_ECB)
+
+while True:
+    print("Choose an action?")
+    print("1. Encrypt chosen plaintext.")
+    print("2. Encrypt part of the flag.")
+    if (choice := int(input("Choice? "))) == 1:
+        pt = input("Data? ").strip().encode()
+    elif choice == 2:
+        index = int(input("Index? "))
+        length = int(input("Length? "))
+        pt = flag[index:index+length]
+    else:
+        break
+
+    ct = cipher.encrypt(pad(pt, cipher.block_size))
+    print(f"Result: {ct.hex()}")
+
+
+We can either encrypt a chosen plaintext or encrypt a part of the flag.
+
+hacker@cryptography~aes-ecb-cpa:~$ /challenge/run
+Choose an action?
+1. Encrypt chosen plaintext.
+2. Encrypt part of the flag.
+Choice? 1
+Data? A
+Result: eeb59454d63c35f27b0f34d08f6384fc
+Choose an action?
+1. Encrypt chosen plaintext.
+2. Encrypt part of the flag.
+Choice? 2
+Index? 0
+Length? 1
+Result: 1339e36553441322b226d552c85572a4
+Choose an action?
+1. Encrypt chosen plaintext.
+2. Encrypt part of the flag.
+Choice?
+
+My approach was to encrypt every printable ASCII character and get the ciphertext and put everything in a codebook/dictionary where CIPHERTEXT:BYTE.
+Then, we'd get flag[0:1]'s ciphered version from the server, compare it to our dictionary, add to our known_flag variable, and move on to flag[1:2], and so on until we get the whole flag.
+
+
+from pwn import *
+
+context.log_level = 'info'
+codebook = {}
+
+p = process('/challenge/run')
+
+for i in range(32, 127):
+    guess_byte = bytes([i])
+    p.sendlineafter(b"Choice? ", b"1")
+    p.sendlineafter(b"Data? ", guess_byte)
+    p.recvuntil(b"Result: ")
+    ct_hex = p.recvline().strip()
+    ct_bytes = unhex(ct_hex)
+    codebook[ct_bytes] = guess_byte
+print(f"Codebook built with {len(codebook)} entries.")
+
+known_flag = b""
+print(codebook)
+for i in range(64):
+    try:
+        p.sendlineafter(b"Choice? ", b"2")
+        p.sendlineafter(b"Index? ", str(i).encode())
+        p.sendlineafter(b"Length? ", b"1")
+        p.recvuntil(b"Result: ")
+        target_ct_hex = p.recvline().strip()
+        target_ct = unhex(target_ct_hex)
+        found_byte = codebook[target_ct]
+        known_flag += found_byte
+        log.info(f"Flag: {known_flag.decode('latin-1')}")
+    except KeyError:
+        print("Done.")
+        break
+
+log.success(f"Final flag: {known_flag.decode('latin-1')}")
+p.close()
+
+10) AES-ECB-CPA-HTTP
+
+
+Part of the challenge code that concerns us:
+key = get_random_bytes(16)
+cipher = AES.new(key=key, mode=AES.MODE_ECB)
+
+db = TemporaryDB()
+# https://www.sqlite.org/lang_createtable.html
+db.execute("""CREATE TABLE secrets AS SELECT ? AS flag""", [open("/flag").read()])
+
+@app.route("/", methods=["GET"])
+def challenge_get():
+    query = flask.request.args.get("query") or "'A'"
+
+    try:
+        sql = f'SELECT {query} FROM secrets'
+        print(f"DEBUG: {sql=}")
+        pt = db.execute(sql).fetchone()[0]
+    except sqlite3.Error as e:
+        flask.abort(500, f"Query: {query}\nError: {e}")
+    except TypeError:
+        # no records found
+        pt = "A"
+
+    ct = cipher.encrypt(pad(pt.encode(), cipher.block_size))
+
+    return f"""
+        <html><body>Welcome to pwn.secret!
+        <form>SELECT <input type=text name=query value='{query}'> FROM secrets<br><input type=submit value=Submit></form>
+        <hr>
+        <b>Query:</b> <pre>{sql}</pre><br>
+        <b>Results:</b><pre>{ct.hex()}</pre>
+        </body></html>
+    """
+
+This code is vulnerable to SQL injection and we will proceed by getting the ciphertext of each printable ASCII character and then afterwards getting the ciphertext of each character in the flag, comparing to the codebook and adding to our known flag value.
+
+My solution code:
+
+import requests
+from pwn import *
+
+url = "http://challenge.localhost:80/"
+codebook = {}
+s = requests.session()
+log.info("Session created.")
+
+params = {"query": "'A'"}
+a = s.get(url, params=params)
+ct_of_a_hex = a.text.split("<b>Results:</b><pre>")[1].split("</pre>\n        </body></html>\n")[0]
+ct_of_a = unhex(ct_of_a_hex)
+
+chars = "qwertyuopasdfghjklizxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM.,_-!|+/\{}*=()&%+!$#<>0123456789"
+for i in chars:
+    query = f"'{i}'"
+
+    params = {"query": query}
+    ct_hex = s.get(url, params=params).text.split("<b>Results:</b><pre>")[1].split("</pre>\n        </body></html>\n")[0]
+    ct_bytes = unhex(ct_hex)
+    codebook[ct_bytes] = i
+
+log.info("Codebook created.")
+
+known_flag = ""
+
+for i in range(1, 65):
+    try:
+        sql_query = f"substr(flag, {i}, 1)"
+        params = {"query": sql_query}
+        r = s.get(url, params=params)
+        ct_hex = r.text.split("<b>Results:</b><pre>")[1].split("</pre>\n        </body></html>\n")[0]
+        target_ct = unhex(ct_hex)
+        if target_ct == ct_of_a:
+            log.success("End of flag")
+        found_char = codebook[target_ct]
+        known_flag += found_char
+        log.info(f"Flag: {known_flag}")
+    except KeyError:
+        log.info("KeyError")
+        break
+
+log.success(f"Final flag: {known_flag}")
+
+11) AES-ECB-CPA-HTTP (base64)
+
+This time we're getting the data as base64 so I had to change the functions a bit.
+
+import requests
+from pwn import *
+from base64 import b64encode, b64decode
+
+url = "http://challenge.localhost:80/"
+codebook = {}
+s = requests.session()
+log.info("Session created.")
+
+params = {"query": "'A'"}
+a = s.get(url, params=params)
+b64_ct_of_a_hex = a.text.split("<b>Results:</b><pre>")[1].split("</pre>\n        </body></html>\n")[0]
+ct_of_a_hex = b64decode(b64_ct_of_a_hex).hex()
+ct_of_a = unhex(ct_of_a_hex)
+
+chars = "qwertyuopasdfghjklizxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM.,_-!|+/\{}*=()&%+!$#<>0123456789"
+for i in chars:
+    query = f"'{i}'"
+
+    params = {"query": query}
+    b64_ct_hex = s.get(url, params=params).text.split("<b>Results:</b><pre>")[1].split("</pre>\n        </body></html>\n")[0]
+    ct_hex = b64decode(b64_ct_hex).hex()
+    ct_bytes = unhex(ct_hex)
+    codebook[ct_bytes] = i
+
+log.info("Codebook created.")
+
+known_flag = ""
+
+for i in range(1, 65):
+    try:
+        sql_query = f"substr(flag, {i}, 1)"
+        params = {"query": sql_query}
+        r = s.get(url, params=params)
+        b64_ct_hex = r.text.split("<b>Results:</b><pre>")[1].split("</pre>\n        </body></html>\n")[0]
+        ct_hex = b64decode(b64_ct_hex).hex()
+        target_ct = unhex(ct_hex)
+        if target_ct == ct_of_a:
+            log.success("End of flag")
+        found_char = codebook[target_ct]
+        known_flag += found_char
+        log.info(f"Flag: {known_flag}")
+    except KeyError:
+        log.info("KeyError")
+        break
+
+log.success(f"Final flag: {known_flag}")
+
+11) AES-ECB-CPA-Suffix
+
+This time we can't get slices of the flag to be encrypted and sent to us, we can only get the tail end of the flag encrypted at a length of our choosing.
+
+Challenge code:
+
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad
+from Crypto.Random import get_random_bytes
+
+flag = open("/flag", "rb").read().strip()
+
+key = get_random_bytes(16)
+cipher = AES.new(key=key, mode=AES.MODE_ECB)
+
+while True:
+    print("Choose an action?")
+    print("1. Encrypt chosen plaintext.")
+    print("2. Encrypt the tail end of the flag.")
+    if (choice := int(input("Choice? "))) == 1:
+        pt = input("Data? ").strip().encode()
+    elif choice == 2:
+        length = int(input("Length? "))
+        pt = flag[-length:]
+    else:
+        break
+
+    ct = cipher.encrypt(pad(pt, cipher.block_size))
+    print(f"Result: {ct.hex()}")
+
+My code:
+
+from pwn import *
+context.log_level = 'info'
+known_flag = b""
+p = process('/challenge/run')
+for i in range(1, 65):
+    codebook = {}
+    for j in range(32, 127):
+        guess_byte = bytes([j])
+        payload = guess_byte + known_flag
+        p.sendlineafter(b"Choice? ", b"1")
+        p.sendlineafter(b"Data? ", payload.decode('latin-1'))
+        p.recvuntil(b"Result: ")
+        ct_hex = p.recvline().strip()
+        ct_bytes = unhex(ct_hex)
+        codebook[ct_bytes] = guess_byte
+    p.sendlineafter(b"Choice? ", b"2")
+    p.sendlineafter(b"Length? ", str(i).encode())
+    p.recvuntil(b"Result: ")
+    target_ct_hex = p.recvline().strip()
+    target_ct_bytes = unhex(target_ct_hex)
+    try:
+        found_byte = codebook[target_ct_bytes]
+        known_flag = found_byte + known_flag
+        log.info(f"Flag: {known_flag.decode('latin-1')}")
+    except KeyError:
+        log.info("KeyError")
+        break
+    except EOFError:
+        log.info("EOFError")
+        break
+
+log.success(f"Final flag: {known_flag.decode('latin-1')}")
+p.close()
+
+12) AES-ECB-CPA-Prefix
+
+This time, we can't chop off the tail and we have to prepend padding.
+Here's the challenge code:
+for n in range(31337):
+    print("")
+    print("Choose an action?")
+    print("1. Encrypt chosen plaintext.")
+    print("2. Prepend something to the flag.")
+    if (choice := int(input("Choice? "))) == 1:
+        pt = input("Data? ").strip().encode()
+    elif choice == 2:
+        pt = input("Data? ").strip().encode() + flag
+    else:
+        break
+
+    padded_pt = pad(pt, cipher.block_size) if len(pt)%cipher.block_size else pt
+    ct = cipher.encrypt(padded_pt)
+    print(f"Result: {ct.hex()}")
+
+    if n == 0:
+        print("I'm here to help!")
+        print("For the first 10, I will split them into blocks for you!")
+        print("After this, you'll have to split them yourself.")
+    if n < 10:
+        print(f"# of blocks: {len(ct)//16}.")
+        for n,i in enumerate(range(0, len(ct)-15, 16), start=1):
+            print(f"Block {n}: {ct[i:i+16].hex()}")
+
+
+Here's my code:
+
+from pwn import *
+
+p = process('/challenge/run')
+context.log_level = 'info'
+known_flag = b""
+
+TOTAL_BLOCK = 128
+
+for i in range(1,65):
+    codebook = {}
+    padding_len = TOTAL_BLOCK - len(known_flag) - 1
+    padding = b"A" * padding_len
+
+    for j in range(32, 127):
+        guess_byte = bytes([j])
+        payload = padding + known_flag + guess_byte
+        p.sendlineafter(b"Choice? ", b"1")
+        p.sendlineafter(b"Data? ", payload.decode('latin-1'))
+        p.recvuntil(b"Result: ")
+        ct_hex = p.recvline().strip()
+        ct_bytes = unhex(ct_hex)
+        target = ct_bytes[112:128]
+        codebook[target] = guess_byte
+
+    p.sendlineafter(b"Choice? ", b"2")
+    p.sendlineafter(b"Data? ", padding.decode('latin-1'))
+
+    p.recvuntil(b"Result: ")
+    ct_hex = p.recvline().strip()
+    ct_bytes = unhex(ct_hex)
+
+    real_target = ct_bytes[112:128]
+
+    if real_target in codebook:
+        found_byte = codebook[real_target]
+        known_flag += found_byte
+        log.info(f"Flag: {known_flag.decode("latin-1")}")
+    else:
+        log.error("Not found.")
+
+
+Sends padding+known_flag+guess_byte for every printable ASCII letter and builds a codebook with the ciphertext and the letter. Then sends padding for the padding+flag mode, sees if the value matches with anything inside our codebook and appends to known_flag, and repeats. After a while of doing these I noticed that I could go about it the other way, by getting the padding+flag and iterating for every ASCII letter until we get a hit, when I changed the code to try it out it went from 7 seconds to 4 seconds to get the flag.
+
+13) AES-ECB-CPA-Prefix-2
+
+
+The challenge differs in a fundamental way but my previous code works here.
+
+14) AES-ECB-CPA-Prefix-Miniboss
+
+Challenge code:
+#!/usr/bin/exec-suid -- /usr/bin/python3 -I
+
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad
+from Crypto.Random import get_random_bytes
+
+flag = open("/flag", "rb").read().strip()
+key = get_random_bytes(16)
+cipher = AES.new(key=key, mode=AES.MODE_ECB)
+
+while True:
+    pt = bytes.fromhex(input("Data? ").strip()) + flag
+    ct = cipher.encrypt(pad(pt, cipher.block_size))
+    print(f"Ciphertext: {ct.hex()}")
+
+So, here the server appends the flag to our input, encrypts it and returns it to us. So, we have to give it a padding decremented by one character so that the first character of the flag slides into our window, and compare.
+
+My code:
+
+
+from pwn import *
+
+p = process('/challenge/run')
+context.log_level = 'info'
+known_flag = b""
+
+TOTAL_BLOCK = 128
+
+for i in range(1, 64):
+    padding_len = TOTAL_BLOCK - len(known_flag) - 1
+    padding = b'A' * padding_len
+
+    p.sendlineafter(b"Data? ", padding.hex().encode())
+    p.recvuntil(b"Ciphertext: ")
+    ct_hex = p.recvline().strip()
+    ct_bytes = unhex(ct_hex)
+    real_target_block = ct_bytes[112:128]
+
+    found = False
+    charset = bytes([b for b in range(32, 127)])
+
+    for a in charset:
+        guess_byte = bytes([a])
+        payload = padding + known_flag + guess_byte
+        p.sendlineafter(b"Data? ", payload.hex().encode())
+        p.recvuntil(b"Ciphertext: ")
+        ct_hex = p.recvline().strip()
+        ct_bytes = unhex(ct_hex)
+
+        test_block = ct_bytes[112:128]
+
+        if test_block == real_target_block:
+            known_flag += guess_byte
+            log.info(f"Found: {known_flag.decode('latin-1')}")
+            found = True
+            break
+    if b"}" in known_flag:
+            break
+    elif not found:
+        log.error("Byte not found.")
+        break
+
+log.success(f"Final flag: {known_flag.decode('latin-1')}")
+p.close()
+
+
+15) AES-ECB-CPA-Prefix-Boss
+
+This time, the server accepts input as base64. The server also has the flag in a database, and you can write to or read from the server. The server returns you the base64'ed, encrypted version of the last entry you posted + flag
+The challenge code that concerns us:
+
+db = TemporaryDB()
+# https://www.sqlite.org/lang_createtable.html
+db.execute("""CREATE TABLE posts AS SELECT ? AS content""", [open("/flag", "rb").read().strip()])
+
+@app.route("/", methods=["POST"])
+def challenge_post():
+    content = flask.request.form.get("content").encode('latin1')
+    db.execute("INSERT INTO posts VALUES (?)", [content])
+    return flask.redirect(flask.request.path)
+
+@app.route("/reset", methods=["POST"])
+def challenge_reset():
+    db.execute("DELETE FROM posts WHERE ROWID > 1")
+    return flask.redirect("/")
+
+@app.route("/", methods=["GET"])
+def challenge_get():
+    pt = b"|".join(post["content"] for post in db.execute("SELECT content FROM posts ORDER BY ROWID DESC").fetchall())
+    ct = cipher.encrypt(pad(pt, cipher.block_size))
+
+    return f"""
+        <html><body>Welcome to pwn.secret!
+        <form method=post>Post a secret:<input type=text name=content><input type=submit value=Submit></form>
+        <form method=post action=reset><input type=submit value="Reset Database"></form>
+        <hr>
+        <b>Encrypted backup:</b><pre>{b64encode(ct).decode()}</pre>
+        </body></html>
+    """
+
+
+Here's my code:
+
+import requests
+from pwn import *
+from base64 import b64encode, b64decode
+
+url = "http://challenge.localhost:80/"
+reset_url = "http://challenge.localhost:80/reset"
+s = requests.session()
+log.info('Session created.')
+
+START_BLOCK = 112
+END_BLOCK = 128
+
+TOTAL_BLOCK = 128
+known_flag = "|"
+
+charset = [chr(char) for char in range(32, 127)]
+
+log.info("#"*32)
+log.info(charset)
+log.info("#"*32)
+
+for i in range(64):
+    s.post(reset_url)
+
+    padding_len = TOTAL_BLOCK-len(known_flag)-1
+    padding = padding_len * "A"
+
+    #POST reset.
+    s.post(reset_url)
+
+    #POST the padding.
+
+    r = s.post(url, data={"content": padding})
+    b64_ct_hex = r.text.split("<b>Encrypted backup:</b><pre>")[1].split("</pre>")[0]
+    ct_hex = b64decode(b64_ct_hex).hex()
+    ct_bytes = unhex(ct_hex)
+
+    real_target_ct = ct_bytes[START_BLOCK:END_BLOCK]
+
+    found = False
+
+    for char in charset:
+
+        payload = padding + known_flag + char
+
+        #POST reset.
+        s.post(reset_url)
+
+        #POST padding+guess.
+        s.post(url, data={"content": payload})
+
+        r = s.get(url)
+        b64_ct_hex = r.text.split("<b>Encrypted backup:</b><pre>")[1].split("</pre>")[0]
+        ct_hex = b64decode(b64_ct_hex).hex()
+        ct_bytes = unhex(ct_hex)
+        target_ct = ct_bytes[START_BLOCK:END_BLOCK]
+
+        if target_ct == real_target_ct:
+            known_flag += char
+            found = True
+            log.info(known_flag)
+            break
+    if "}" in known_flag:
+        break
+
+log.success(f"Flag found: {known_flag}")
+
+
+
+16) AES-CBC
+
+This challenge gives us a IV + ciphertext, and the key, and wants us to decrypt.
+
+#!/usr/bin/exec-suid -- /usr/bin/python3 -I
+
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad
+from Crypto.Random import get_random_bytes
+
+flag = open("/flag", "rb").read()
+
+key = get_random_bytes(16)
+cipher = AES.new(key=key, mode=AES.MODE_CBC)
+ciphertext = cipher.iv + cipher.encrypt(pad(flag, cipher.block_size))
+
+print(f"AES Key (hex): {key.hex()}")
+print(f"Flag Ciphertext (hex): {ciphertext.hex()}")
+
+As you can see, it takes the flag, pads it, encrypts it, and appends the IV.
+
+Here's my code to solve it:
+
+
+from Crypto.Cipher import AES
+
+key_hex = "c5c341adf218dbd7b7e917edef4376bc"
+full_data_hex = "6003a498264a0c9ee8d3b09ecc3acbe792e4aca4f140720d65bec8a12d684f657867dd57dc02c57359e081e7d1e6d1d42c2c85f847e9b71cef9df25f9fdb02a0c7021b7fae20ee76def276232568664c"
+
+key = bytes.fromhex(key_hex)
+full_data = bytes.fromhex(full_data_hex)
+
+iv = full_data[:16]
+ciphertext = full_data[16:]
+
+cipher = AES.new(key=key, mode=AES.MODE_CBC, iv=iv)
+
+plaintext = cipher.decrypt(ciphertext).decode("latin-1")
+print(plaintext)
+
+
+
+17) AES-CBC Tampering
+
+In this challenge, we're tampering with an encrypted message to inject our own command.
+The challenge code:
+
+worker.py:
+
+```from Crypto.Cipher import AES
+from Crypto.Util.Padding import unpad
+from Crypto.Random import get_random_bytes
+
+import time
+import sys
+
+key = open("/challenge/.key", "rb").read()
+
+while line := sys.stdin.readline():
+    if not line.startswith("TASK: "):
+        continue
+    data = bytes.fromhex(line.split()[1])
+    iv, ciphertext = data[:16], data[16:]
+
+    cipher = AES.new(key=key, mode=AES.MODE_CBC, iv=iv)
+    try:
+        plaintext = unpad(cipher.decrypt(ciphertext), cipher.block_size).decode('latin1')
+    except ValueError as e:
+        print("Error:", e)
+        continue
+
+    print(f"Hex of plaintext: {plaintext.encode('latin1').hex()}")
+    print(f"Received command: {plaintext}")
+    if plaintext == "sleep":
+        print("Sleeping!")
+        time.sleep(1)
+    elif plaintext == "flag!":
+        print("Victory! Your flag:")
+        print(open("/flag").read())
+    else:
+        print("Unknown command!")```
+
+
+dispatcher.py:
+
+```#!/usr/bin/exec-suid -- /usr/bin/python3 -I
+
+import os
+
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad
+from Crypto.Random import get_random_bytes
+
+key = open("/challenge/.key", "rb").read()
+cipher = AES.new(key=key, mode=AES.MODE_CBC)
+ciphertext = cipher.iv + cipher.encrypt(pad(b"sleep", cipher.block_size))
+
+print(f"TASK: {ciphertext.hex()}")
+```
+
+The gist of the attack is that the dispatcher sends a value of IV + Ciphertext, we're tampering with the IV in a way that will change the resulting plaintext to go from 'sleep' to 'flag!', we can do this by XOR'ing 'sleep' and 'flag!' and XOR'ing that with the first 5 bytes of the IV.
+
+My solution code:
+
+ from Crypto.Util.strxor import strxor
+
+full_data_hex = "#################################" # 16 bytes, iv + ciphertext
+
+iv_hex = full_data_hex[:32]
+ct_hex = full_data_hex[32:]
+
+iv = bytes.fromhex(iv_hex)
+ct = bytes.fromhex(ct_hex)
+
+xor_value = strxor(b"sleep", b"flag!")
+new_iv = strxor(xor_value, iv[:5])
+end_iv = iv[5:]
+
+new_data = new_iv + end_iv + ct
+print(new_data.hex())
+
+18) AES-CBC Resizing
+
+This time the commands are not of the same length, so we have to be mindful of the padding, according to PKCS#7.
+One of the commands is "sleep" and the other is "flag".
+
+My solution:
+
+from Crypto.Util.strxor import strxor
+from Crypto.Util.Padding import pad
+BLOCK_SIZE = 16
+
+full_data_hex = "e31f8bc33d421f9ef68ad6ff1e4e9765e5eb0011efe902bc7c094a49ec56613c"
+
+iv_hex = full_data_hex[:32]
+ct_hex = full_data_hex[32:]
+
+iv = bytes.fromhex(iv_hex)
+ct = bytes.fromhex(ct_hex)
+
+old_pt = pad(b"sleep", BLOCK_SIZE)
+new_pt = pad(b"flag", BLOCK_SIZE)
+
+xor_value = strxor(old_pt, new_pt)
+
+new_iv = strxor(xor_value, iv)
+new_data = new_iv + ct
+print(new_data.hex())
+
+19) AES-CBC-POA Partial Block
+
+Now we work on padding oracle attacks. The platform provides some resources if the padding oracle attack logic is not clear.
+
+Challenge code:
+
+key = open("/challenge/.key", "rb").read()
+pw = open("/challenge/.pw").read().strip()
+
+print(f"The password is {len(pw)} bytes long!")
+
+while line := sys.stdin.readline():
+    if not line.startswith("TASK: "):
+        continue
+    data = bytes.fromhex(line.split()[1])
+    iv, ciphertext = data[:16], data[16:]
+
+    cipher = AES.new(key=key, mode=AES.MODE_CBC, iv=iv)
+    try:
+        plaintext = unpad(cipher.decrypt(ciphertext), cipher.block_size).decode('latin1')
+    except ValueError as e:
+        print("Error:", e)
+        continue
+
+    if plaintext == "sleep":
+        print("Sleeping!")
+        time.sleep(1)
+    elif plaintext == pw:
+        print("Correct! Use /challenge/redeem to redeem the password for the flag!")
+    else:
+        print("Unknown command!")
+
+My code:
+
+from Crypto.Util.Padding import unpad
+from pwn import *
+
+f = process(["/challenge/dispatcher", "pw"])
+a = f.recvline()
+fulltext = a.decode().split()[
+    1
+]  # We will get it from the process instead of doing copy-paste by hand
+f.close()
+
+p = process("/challenge/worker")
+p.recvline()  # We will get an initial response telling us how many characters the password has, so we gotta get that out of the way
+
+ivtext = fulltext[:32]
+cipher_text = fulltext[32:]
+
+iv = bytes.fromhex(ivtext)
+ct = bytes.fromhex(cipher_text)
+
+
+orig_is = [0] * 16
+padding = 0x01
+
+for j in range(15, -1, -1):
+    current_padding = 16 - j
+    fake_iv = [0] * 16
+
+    for k in range(j + 1, 16):
+        fake_iv[k] = orig_is[k] ^ current_padding
+
+    for i in range(256):
+        fake_iv[j] = i
+        temp_iv = bytes(fake_iv) + ct
+
+        p.sendline("TASK: " + temp_iv.hex())
+        resp = p.recvline().decode().strip()
+        if "Unknown command!" in resp:
+            print("Padding correct")
+            orig_is[j] = fake_iv[j] ^ padding
+            ch = orig_is[j]
+            print(ch)
+            break
+        elif (
+            resp
+            == "Correct! Use /challenge/redeem to redeem the password for the flag!"
+        ):
+            print("Command pw correct.")
+            break
+        elif resp == "Sleeping!":
+            print("Slept")
+            break
+    padding += 1
+
+plaintext = []
+for i in range(16):
+    pt = iv[i] ^ orig_is[i]
+    plaintext.append(pt)
+
+flag = bytes(plaintext).decode("latin1", errors="ignore")
+print("\nFLAG: " + flag)
+send_flag = unpad(flag.encode(), 16)
+p.close()
+
+p = process("/challenge/redeem")
+p.recvuntil(b"? ")
+p.sendline(send_flag)
+resp = p.recvall()
+print(resp)
+p.close()
+
+20) AES-CBC-POA-Full-Block
+
+This time the challenge is a bit different, but the code is almost the same.
+
+from Crypto.Util.Padding import unpad
+from pwn import *
+
+f = process(["/challenge/dispatcher", "pw"])
+a = f.recvline()
+fulltext = a.decode().split()[1]  # We will get it from the process instead of doing copy-paste by hand
+f.close()
+
+p = process("/challenge/worker")
+p.recvline()  # We will get an initial response telling us how many characters the password has, so we gotta get that out of the way
+
+ivtext = fulltext[:32]
+cipher_text = fulltext[32:64]
+
+iv = bytes.fromhex(ivtext)
+ct = bytes.fromhex(cipher_text)
+
+
+orig_is = [0] * 16
+padding = 0x01
+
+for j in range(15, -1, -1):
+    current_padding = 16 - j
+    fake_iv = [0] * 16
+
+    for k in range(j + 1, 16):
+        fake_iv[k] = orig_is[k] ^ current_padding
+
+    for i in range(256):
+        fake_iv[j] = i
+        temp_iv = bytes(fake_iv) + ct
+
+        p.sendline("TASK: " + temp_iv.hex())
+        resp = p.recvline().decode().strip()
+        if "Unknown command!" in resp:
+            print("Padding correct")
+            orig_is[j] = fake_iv[j] ^ padding
+            ch = orig_is[j]
+            print(ch)
+            break
+        elif (
+            resp
+            == "Correct! Use /challenge/redeem to redeem the password for the flag!"
+        ):
+            print("Command pw correct.")
+            break
+        elif resp == "Sleeping!":
+            print("Slept")
+            break
+    padding += 1
+
+plaintext = []
+for i in range(16):
+    pt = iv[i] ^ orig_is[i]
+    plaintext.append(pt)
+
+flag = bytes(plaintext).decode("latin1", errors="ignore")
+print("\nFLAG: " + flag)
+send_flag = flag.encode()
+p.close()
+
+p = process("/challenge/redeem")
+p.recvuntil(b"? ")
+p.sendline(send_flag)
+resp = p.recvall()
+print(resp)
+p.close()
+
+21) AES-CBC-POA-Multi-Block
+
+This challenge has multiple ciphertext blocks. I solved this challenge by wrapping the previous solution with a loop.
+
+from pwn import *
+
+f = process(["/challenge/dispatcher", "flag"])
+a = f.recvline()
+ciphertext_hex = a.decode().split()[1]
+f.close() # This is the output of ciphertext.hex()
+ciphertext = bytes.fromhex(ciphertext_hex)
+
+block_size = 16
+blocks = []
+
+for i in range(0, len(ciphertext), block_size):
+    chunk = ciphertext[i : i+block_size]
+    blocks.append(chunk)
+
+p = process("/challenge/worker")
+final_plaintext = []
+
+for i in range(1, len(blocks)):
+    target_block = blocks[i]
+    previous_block = blocks[i-1]
+
+    orig_is = [0] * 16
+    padding = 0x01
+
+    for j in range(15, -1, -1):
+        current_padding = 16-j
+        fake_iv = [0] * 16
+
+        for k in range(j + 1, 16):
+            fake_iv[k] = orig_is[k] ^ current_padding
+
+        for i in range(256):
+            fake_iv[j] = i
+            temp_iv = bytes(fake_iv) + target_block
+
+            p.sendline("TASK: " + temp_iv.hex())
+            resp = p.recvline().decode().strip()
+
+            if "Unknown command!" in resp:
+                print("Padding correct")
+                orig_is[j] = fake_iv[j] ^ padding
+                ch = orig_is[j]
+                print(ch)
+                break
+            elif "Correct" in resp:
+                print("Flag command correct")
+                break
+        padding += 1
+    for i in range(16):
+        pt = previous_block[i] ^ orig_is[i]
+        final_plaintext.append(pt)
+
+flag = bytes(final_plaintext).decode("latin1", errors="ignore")
+print("\nFLAG: " + flag)
+
+
+22) AES-CBC-POA-Encrypt
+This time, we encrypt arbitrary data instead of decrypting.
+
+
+from pwn import *
+from Crypto.Util.Padding import pad
+
+target_msg = b"please give me the flag, kind worker process!"
+block_size = 16
+blocks = []
+padded_msg = pad(target_msg, block_size)
+#Plaintext = Previous_CT ⊕ Intermediate, Previous_CT = Plaintext ⊕ Intermediate
+
+for i in range(0, len(padded_msg), block_size):
+    chunk = padded_msg[i:i+block_size]
+    blocks.append(chunk)
+
+current_ciphertext_block = b"\x00" * 16
+final_chain = [current_ciphertext_block]
+
+p = process("/challenge/worker")
+
+for i in range(len(blocks) -1, -1, -1):
+    target_plaintext = blocks[i]
+
+    orig_is = [0] * 16
+    padding = 0x01
+
+    for j in range(15, -1, -1):
+        current_padding = 16-j
+        fake_iv = [0] * 16
+
+        for k in range(j + 1, 16):
+            fake_iv[k] = orig_is[k] ^ current_padding
+
+        for guess in range(256):
+            fake_iv[j] = guess
+            temp_iv = bytes(fake_iv) + current_ciphertext_block
+
+            p.sendline("TASK: " + temp_iv.hex())
+            resp = p.recvline().decode().strip()
+
+            if "Unknown command!" in resp or "Sleeping" in resp:
+                print("Padding correct")
+                orig_is[j] = fake_iv[j] ^ padding
+        padding += 1
+
+
+    new_prev_block = []
+    for k in range(16):
+        byte = target_plaintext[k] ^ orig_is[k]
+        new_prev_block.append(byte)
+
+    new_prev_block = bytes(new_prev_block)
+    final_chain.insert(0, new_prev_block)
+
+    current_ciphertext_block = new_prev_block
+
+full_payload = b"".join(final_chain)
+p.sendline(b"TASK: " + full_payload.hex().encode())
+recv = p.recvline()
+print(recv)
+recv = p.recvline()
+print(recv)
+
+22) AES-CBC-POA-Encrypt-2
+
+Same as above.
+
+23) DHKE
+
+The challenge program will have us carry out a DHKE (Diffie-Hellman Key Exchange). For this, the program will give us the values
+p, g, A, and ask us the value of B. 'a' is the secret value of the other party, and 'b' is our secret value, these are never exchanged.
+Since A is the product of pow(g, a, p) we will come up with a B of our own, which will be pow(g, b, p), b being our arbitrary value, and send it to the program. This time, it will ask us for 's'. The other party would have done s = (B ^ a) mod p, and in our case we will do s = (A ^ b) mod p, which will have equivalent values. We can get s by doing pow(A, b, p), send the value to the program and get our flag.
+
+24) DHKE-to-AES
+
+Same as above, but we use the key we obtain to decrypt a message.
+
+We got g, p, A. b is an arbitrary number I chose. B = pow(g, b, p), s = pow(A, b, p).
+We receive our ciphertext, which contains the flag and we must decrypt it.
+
+from Crypto.Cipher import AES
+key = s.to_bytes(256, "little")[:16]
+ciphertext = bytes.fromhex("your_ciphertext_hex")
+cipher = AES.new(key=key, mode=AES.MODE_CBC)
+plaintext = cipher.decrypt(ciphertext)
+print(plaintext)
+
+25) RSA 1
+
+We're given cryptographic primitives and told to decrypt a message.
+# n = ???, e = ???, d = ???
+ciphertext = bytes.fromhex("our_hex_value")
+ciphertext_int = int.from_bytes(ciphertext, "little")
+message_int = pow(ciphertext_int, d, n)
+flag = message_int.to_bytes(256, "little")
+print(flag)
+
+26) RSA 2
+
+This time, we calculate n and d on our own.
+# p = ???, q = ???, e = ???
+ciphertext = bytes.fromhex("our_hex_value")
+ciphertext_int = int.from_bytes(ciphertext, "little")
+n = p * q
+phi = (p-1) * (q-1)
+d = pow(e, -1, phi)
+message_int = pow(ciphertext_int, d, n)
+message = message_int.to_bytes(256, "little")
+print(message.strip(b"\x00")
+
+27) RSA 3
+
+We're completing an RSA challenge-response. We're given e, d, n, and a challenge hex.
+
+# e = 0x10001, d = 0x????, n = 0x????, challenge = 0x????
+# challenge = pow(message, e, n)
+response = pow(challenge, d, n)
+
+28) RSA 4
+
+This time, we provide the public key.
+
+from pwn import *
+from Crypto.Util.number import getPrime
+from base64 import b64decode
+
+p = getPrime(300); q = getPrime(300)
+n = p*q
+phi = (p-1)*(q-1)
+e = 65537
+d = pow(e, -1, phi)
+
+r = process("/challenge/run")
+r.sendlineafter(b"e: ", hex(e).encode())
+r.sendlineafter(b"n: ", hex(n).encode())
+
+r.recvuntil(b"challenge: ")
+challenge = r.recvline().strip().decode()
+challenge_int = int(challenge, 16)
+response = pow(challenge_int, d, n)
+r.sendlineafter(b"response: ", hex(response).encode())
+
+r.recvuntil(b"secret ciphertext (b64): ")
+b64_ct = r.recvline().strip().decode()
+
+efbytes = b64decode(b64_ct)
+efint = int.from_bytes(efbytes, "little")
+
+fint = pow(efint, d, n)
+flag = fint.to_bytes(256, "little").strip(b"\x00").decode()
+print(flag)
+r.close()
+
+29) RSA Signature
+
+This time, we use RSA's malleability to get around a restriction. The dispatcher won't sign "flag" but the worker expects a signed "flag".
+We make use of the fact that Sig(A) . Sig(B) = Sig(A . B) % n. In here, I'll be using sig(flag^2) * sig(flag^-1) % n to get sig(flag)
+
+from base64 import b64decode, b64encode
+from pwn import *
+
+msg = b"flag"
+msg_int = int.from_bytes(msg, "little")
+n = int(open("/challenge/key-n").read(), 16)
+
+msg2_b64 = b64encode(pow(msg_int, 2, n).to_bytes(256, "little"))
+msgn1_b64 = b64encode(pow(msg_int, -1, n).to_bytes(256, "little"))
+
+p = process(["/challenge/dispatcher", msg2_b64])
+p.recvuntil(b"Signed command (b64): ")
+signed_msg2_b64 = p.recvline().strip()
+p.close()
+
+p = process(["/challenge/dispatcher", msgn1_b64])
+p.recvuntil(b"Signed command (b64): ")
+signed_msgn1_b64 = p.recvline().strip()
+p.close()
+
+signed_msg2 = int.from_bytes(b64decode(signed_msg2_b64), "little")
+signed_msgn1 = int.from_bytes(b64decode(signed_msgn1_b64), "little")
+
+flag = ((signed_msg2 * signed_msgn1) % n).to_bytes(256, "little")
+flag_b64 = b64encode(flag)
+
+p = process(["/challenge/worker", flag_b64])
+print(p.recvall())
+p.close()
+
+30) SHA 1
+
+We're working to get a partial hash collision, just the first 3 bytes.
+I did not automate this challenge because it's faster if I run this on my own computer to find an answer.
+
+flag_hash = 'XXXXXX'
+import os
+import hashlib
+prefix_length = 6
+while True:
+    rndom = os.urandom(4)
+    collision = hashlib.sha256(rndom).hexdigest()[:6]
+    if collision == flag_hash:
+        print(rndom.hex())
+        break
+
+31) SHA 2
+
+This time, we're working on a proof-of-work challenge. Our job is to find a response data that gives us data that starts with two 0x00's when appended to challenge data and hashed.
+
+import hashlib
+from base64 import b64decode, b64encode
+from pwn import *
+
+p = process("/challenge/run")
+p.recvuntil(b"challenge (b64): ")
+b64challenge = p.recvline().strip()
+challenge = b64decode(b64challenge)
+
+p.recvuntil(b"response (b64): ")
+
+i = 0
+while True:
+    i_byte = i.to_bytes(4, "little")
+
+    h = hashlib.sha256(challenge + i_byte).digest()
+    if h.startswith(b'\x00\x00'):
+        response64 = base64.b64encode(i_byte)
+        p.writeline(response64)
+        break
+    i += 1
+
+print(p.recvall().decode())
+
+32) TLS 1
+
+We are provided with a self-signed root certificate and root private key, which we will use to sign a user certificate.
+
+from pwn import *
+from Crypto.Util.number import getPrime, inverse
+from base64 import b64decode, b64encode
+import json, hashlib
+
+p = process("/challenge/run")
+
+p.recvuntil(b"root key d: ")
+rootkeyd_hex = p.recvline().strip().decode()
+root_d = int(rootkeyd_hex, 16)
+
+p.recvuntil(b"root certificate (b64): ")
+rootcert_b64 = p.recvline().strip()
+rootcert_json = b64decode(rootcert_b64)
+rootcert = json.loads(rootcert_json)
+
+print("[+] Root certificate: ", rootcert)
+
+root_n = rootcert["key"]["n"]
+
+p.recvuntil(b"root certificate signature (b64): ")
+rootcertsign_b64 = p.recvline().strip()
+rootcertsign = b64decode(rootcertsign_b64)
+
+
+print("[+] Generating user certificate.")
+
+my_p = getPrime(300)
+my_q = getPrime(300)
+my_n = my_q*my_p
+my_e = 0x10001
+my_d = inverse(my_e, (my_p -1) * (my_q -1))
+
+my_cert = {
+        "name": "emir",
+        "key": {
+            "n": my_n,
+            "e": my_e
+        },
+        "signer": "root"
+}
+
+my_cert_data = json.dumps(my_cert).encode()
+cert_hash = hashlib.sha256(my_cert_data).digest()
+cert_hash_int = int.from_bytes(cert_hash, "little")
+
+print("[+] Signing user certificate.")
+signature_int = pow(cert_hash_int, root_d, root_n)
+signature_byte = signature_int.to_bytes(256, "little")
+
+print("[+] Sending.")
+p.recvuntil(b"user certificate (b64): ")
+p.sendline(b64encode(my_cert_data))
+p.recvuntil(b"user certificate signature (b64): ")
+p.sendline(b64encode(signature_byte))
+
+p.recvuntil(b"secret ciphertext (b64): ")
+ciphertext_b64 = p.recvline().strip().decode()
+ciphertext = b64decode(ciphertext_b64).strip()
+ciphertext_int = int.from_bytes(ciphertext, "little")
+
+flag = pow(ciphertext_int, my_d, my_n)
+flag = flag.to_bytes(256, "little").strip(b"\x00").decode()
+print(flag)
+p.close()
+
+33) TLS 2
+
+In this challenge we perform a TLS handshake.
+
+
+from pwn import *
+from Crypto.Util.number import getPrime, inverse, long_to_bytes
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad
+from base64 import b64decode, b64encode
+import json, hashlib
+
+p = process("/challenge/run")
+
+p.recvuntil(b"p: ")
+p_val = int(p.recvline().strip().decode(), 16)
+
+p.recvuntil(b"g: ")
+g_val = int(p.recvline().strip().decode(), 16)
+
+p.recvuntil(b"root key d: ")
+root_key_d = p.recvline().strip().decode()
+
+p.recvuntil(b"root certificate (b64): ")
+rootcert = b64decode(p.recvline().strip())
+rootcert_json = json.loads(rootcert)
+print(rootcert_json)
+
+root_n = rootcert_json["key"]["n"]
+
+p.recvuntil(b"root certificate signature (b64): ")
+rootcertsig = b64decode(p.recvline().strip())
+
+p.recvuntil(b"name: ")
+name_val = p.recvline().strip().decode()
+
+p.recvuntil(b"A: ")
+A_val = p.recvline().strip().decode()
+
+b_val = getPrime(300)
+B_val = pow(g_val, b_val, p_val)
+
+shared_secret = pow(int(A_val, 16), b_val, p_val)
+secret_bytes = shared_secret.to_bytes(256, "little")
+
+
+aes_key = hashlib.sha256(secret_bytes).digest()[:16]
+
+iv = b'\x00'*16
+cipher = AES.new(aes_key, AES.MODE_CBC, iv)
+
+def encrypt_data(byte):
+    ciphertext = cipher.encrypt(pad(byte, 16))
+    return ciphertext
+
+p.recvuntil(b"B: ")
+p.sendline(hex(B_val).encode())
+
+user_q = getPrime(300)
+user_p = getPrime(300)
+user_n = user_q * user_p
+user_e = 0x10001
+user_d = inverse(user_e, (user_p - 1) * (user_q - 1))
+
+user_cert = {
+        "name": name_val,
+        "key": {
+            "n": user_n,
+            "e": user_e
+        },
+        "signer": "root"
+}
+
+user_cert_data = json.dumps(user_cert).encode()
+cert_hash = hashlib.sha256(user_cert_data).digest()
+cert_hash_int = int.from_bytes(cert_hash, "little")
+
+signature_int = pow(cert_hash_int, int(root_key_d, 16), root_n)
+signature_byte = signature_int.to_bytes(256, "little")
+
+p.recvuntil(b"user certificate (b64): ")
+p.sendline(b64encode(encrypt_data(user_cert_data)))
+
+p.recvuntil(b"user certificate signature (b64): ")
+p.sendline(b64encode(encrypt_data(signature_byte)))
+
+p.recvuntil(b"user signature (b64): ")
+sign1 = name_val.encode().ljust(256, b'\x00')
+sign2 = int(A_val, 16).to_bytes(256, "little")
+sign3 = B_val.to_bytes(256, "little")
+
+print(sign1)
+print(sign2)
+print(sign3)
+print(type(sign1))
+print(type(sign2))
+print(type(sign3))
+
+full_payload = sign1 + sign2 + sign3
+full_payload_hash = hashlib.sha256(full_payload).digest()
+
+handshake_int = pow(int.from_bytes(full_payload_hash, "little"), user_d, user_n)
+handshake_bytes = handshake_int.to_bytes(256, "little")
+
+p.sendline(b64encode(encrypt_data(handshake_bytes)))
+
+p.recvuntil(b"secret ciphertext (b64): ")
+secret_ct = p.recvline().strip()
+secret = b64decode(secret_ct)
+cipher2 = AES.new(aes_key, AES.MODE_CBC, iv)
+flag = cipher2.decrypt(secret)
+
+print(flag)
+p.close()
